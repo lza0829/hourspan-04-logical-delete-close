@@ -3,7 +3,6 @@ STUBS = [
     "same_day_multi_change",
     "late_snapshot_apply",
     "null_to_value_open",
-    "logical_delete_close",
     "current_mirror_resync",
     "as_of_query_proof",
     "business_key_rebind",

@@ -1,7 +1,10 @@
 from app.db import connect
+from app.modules import logical_delete_close as ldc
 
 
 def overview(conn):
+    retired = ldc.retired_set(conn)
+    placeholders = ",".join("?" * len(retired))
     return {
         "门店数": conn.execute("SELECT COUNT(*) AS c FROM stores").fetchone()["c"],
         "快照数": conn.execute("SELECT COUNT(*) AS c FROM source_snapshots").fetchone()["c"],
@@ -9,6 +12,10 @@ def overview(conn):
         "当前镜": conn.execute("SELECT COUNT(*) AS c FROM dim_store_hours_current").fetchone()["c"],
         "当前有效历史": conn.execute(
             "SELECT COUNT(*) AS c FROM dim_store_hours_hist WHERE is_current=1"
+        ).fetchone()["c"],
+        "退役段": conn.execute(
+            f"SELECT COUNT(*) AS c FROM dim_store_hours_hist WHERE biz_status IN ({placeholders})",
+            tuple(sorted(retired)),
         ).fetchone()["c"],
         "入档批": conn.execute("SELECT COUNT(*) AS c FROM ingest_batches").fetchone()["c"],
         "检测跑次": conn.execute("SELECT COUNT(*) AS c FROM detect_runs").fetchone()["c"],

@@ -2,6 +2,7 @@ import json
 from uuid import uuid4
 
 from app.db import connect
+from app.modules import logical_delete_close as ldc
 from app.seed import now_iso
 
 
@@ -11,6 +12,8 @@ def run_detect(batch_id: str | None = None):
     run_id = f"DET-{uuid4().hex[:8]}"
     now = now_iso()
     try:
+        retired = ldc.retired_set(conn)
+        revive = ldc.revive_status(conn)
         if batch_id:
             snaps = conn.execute(
                 "SELECT * FROM source_snapshots WHERE batch_id=? ORDER BY store_id, as_of_ts",
@@ -33,6 +36,19 @@ def run_detect(batch_id: str | None = None):
                 "SELECT * FROM dim_store_hours_current WHERE store_id=?",
                 (snap["store_id"],),
             ).fetchone()
+            # 退役守卫预判（与入档应用共用同一纯函数；应用时以当时镜态重判为准）
+            action, reason = ldc.decide(
+                snap["biz_status"],
+                snap["biz_status_explicit"],
+                cur["biz_status"] if cur else None,
+                retired,
+                revive,
+            )
+            guard = {"decision": action}
+            if reason:
+                guard["reason"] = reason
+            if cur and ldc.is_retired(cur["biz_status"], retired):
+                guard["retired_current"] = True
             if not cur:
                 changes.append(
                     {
@@ -41,6 +57,7 @@ def run_detect(batch_id: str | None = None):
                         "snapshot_id": snap["id"],
                         "from_hash": None,
                         "to_hash": snap["row_hash"],
+                        **guard,
                     }
                 )
             elif cur["row_hash"] != snap["row_hash"]:
@@ -63,6 +80,7 @@ def run_detect(batch_id: str | None = None):
                             "weekday_mask": snap["weekday_mask"],
                             "biz_status": snap["biz_status"],
                         },
+                        **guard,
                     }
                 )
         report = {"changes": changes, "scanned": len(snaps)}

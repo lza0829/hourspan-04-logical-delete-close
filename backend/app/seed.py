@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS source_snapshots (
   close_time TEXT,
   weekday_mask TEXT NOT NULL DEFAULT '1111100',
   biz_status TEXT NOT NULL DEFAULT 'open',
+  biz_status_explicit INTEGER NOT NULL DEFAULT 1,
   payload_json TEXT NOT NULL DEFAULT '{}',
   row_hash TEXT NOT NULL
 );
@@ -106,12 +107,32 @@ def row_hash(open_time, close_time, weekday_mask, biz_status) -> str:
 def init_db():
     conn = connect()
     conn.executescript(SCHEMA)
-    if not conn.execute("SELECT 1 FROM settings WHERE key='as_of_mode'").fetchone():
-        conn.execute("INSERT INTO settings(key, value) VALUES ('as_of_mode', 'business_ts')")
+    _migrate(conn)
+    defaults = {
+        "as_of_mode": "business_ts",
+        "retire_status_set": "closed,retired",
+        "revive_status": "open",
+    }
+    for key, value in defaults.items():
+        if not conn.execute("SELECT 1 FROM settings WHERE key=?", (key,)).fetchone():
+            conn.execute("INSERT INTO settings(key, value) VALUES (?, ?)", (key, value))
     if conn.execute("SELECT COUNT(*) AS c FROM stores").fetchone()["c"] == 0:
         _seed(conn)
     conn.commit()
     conn.close()
+
+
+def _migrate(conn):
+    """老库就地补列：biz_status_explicit 缺省 1（历史快照视为显式）。"""
+    cols = {
+        r["name"]
+        for r in conn.execute("PRAGMA table_info(source_snapshots)").fetchall()
+    }
+    if "biz_status_explicit" not in cols:
+        conn.execute(
+            "ALTER TABLE source_snapshots "
+            "ADD COLUMN biz_status_explicit INTEGER NOT NULL DEFAULT 1"
+        )
 
 
 def _seed(conn):
@@ -139,8 +160,8 @@ def _seed(conn):
         conn.execute(
             """INSERT INTO source_snapshots(
               id, batch_id, store_id, as_of_ts, open_time, close_time,
-              weekday_mask, biz_status, payload_json, row_hash
-            ) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+              weekday_mask, biz_status, biz_status_explicit, payload_json, row_hash
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 snap_id,
                 batch_id,
@@ -150,6 +171,7 @@ def _seed(conn):
                 ct,
                 wm,
                 st,
+                1 if "biz_status" in s else 0,
                 json.dumps(s.get("payload", {}), ensure_ascii=False),
                 rh,
             ),

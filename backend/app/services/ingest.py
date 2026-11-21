@@ -24,14 +24,16 @@ def run_batch(fixture_name: str = "ingest_change_batch.json"):
                 continue
             ot, ct = s.get("open_time"), s.get("close_time")
             wm = s.get("weekday_mask", "1111100")
+            # 缺省补 open 不算显式复活标记：explicit 记录快照是否自带 biz_status
+            explicit = 1 if "biz_status" in s else 0
             st = s.get("biz_status", "open")
             rh = row_hash(ot, ct, wm, st)
             snap_id = s.get("id") or f"SNAP-{uuid4().hex[:10]}"
             conn.execute(
                 """INSERT OR IGNORE INTO source_snapshots(
                   id, batch_id, store_id, as_of_ts, open_time, close_time,
-                  weekday_mask, biz_status, payload_json, row_hash
-                ) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                  weekday_mask, biz_status, biz_status_explicit, payload_json, row_hash
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     snap_id,
                     batch_id,
@@ -41,6 +43,7 @@ def run_batch(fixture_name: str = "ingest_change_batch.json"):
                     ct,
                     wm,
                     st,
+                    explicit,
                     json.dumps(s.get("payload", {}), ensure_ascii=False),
                     rh,
                 ),

@@ -4,6 +4,7 @@ import { api } from "../api.js";
 export default function Ingest() {
   const [batches, setBatches] = useState([]);
   const [snaps, setSnaps] = useState([]);
+  const [fixture, setFixture] = useState("ingest_change_batch.json");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
 
@@ -17,13 +18,23 @@ export default function Ingest() {
   const run = async () => {
     setErr("");
     try {
-      const r = await api("/api/ingest/run", { method: "POST", body: "{}" });
+      const r = await api("/api/ingest/run", {
+        method: "POST",
+        body: JSON.stringify({ fixture: fixture.trim() || "ingest_change_batch.json" }),
+      });
       setMsg(JSON.stringify(r, null, 2));
       await reload();
     } catch (e) {
       setErr(String(e.message || e));
     }
   };
+
+  const fixturePicks = [
+    "ingest_change_batch.json",
+    "retire_close_batch.json",
+    "retire_sneak_batch.json",
+    "retire_revive_batch.json",
+  ];
 
   return (
     <>
@@ -35,9 +46,30 @@ export default function Ingest() {
       </div>
       <div className="panel">
         <div className="actions">
-          <button onClick={run}>跑变更夹具入档</button>
+          <input
+            value={fixture}
+            onChange={(e) => setFixture(e.target.value)}
+            placeholder="夹具文件名"
+            style={{ minWidth: 260, padding: "0.4rem 0.6rem", borderRadius: 8, border: "1px solid var(--line)", background: "#0c2226", color: "var(--text)" }}
+          />
+          <button onClick={run}>跑夹具入档</button>
           <button className="secondary" onClick={reload}>刷新</button>
         </div>
+        <div className="actions" style={{ marginTop: "0.5rem" }}>
+          {fixturePicks.map((f) => (
+            <button
+              key={f}
+              className={fixture === f ? "" : "secondary"}
+              onClick={() => setFixture(f)}
+            >
+              {f.replace(".json", "")}
+            </button>
+          ))}
+        </div>
+        <p className="muted" style={{ margin: "0.5rem 0 0" }}>
+          退役管道：retire_close（营业→退役）→ retire_sneak（无复活标记，应用时必搁置）→ retire_revive（显式 open 复活）。
+          入档后请到「变更检测」带 batch_id 跑检测，再到「历史维」应用 Type2。
+        </p>
         {msg && <pre className="msg">{msg}</pre>}
         {err && <p className="error">{err}</p>}
       </div>

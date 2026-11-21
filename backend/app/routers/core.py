@@ -2,6 +2,7 @@ from fastapi import APIRouter, Body, HTTPException
 
 from app.db import connect
 from app.modules import STUBS
+from app.modules import logical_delete_close as ldc
 from app.services import catalog, detect, ingest, scd
 
 router = APIRouter(prefix="/api")
@@ -119,6 +120,16 @@ def quarantine():
             "SELECT * FROM quarantine ORDER BY id DESC"
         ).fetchall()
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+@router.get("/retirements")
+def retirements():
+    """退役核证（只读）：退役段 + 镜态 + 拒绝原因（quarantine）+ 全局不变量。"""
+    conn = connect()
+    try:
+        return ldc.verify(conn)
     finally:
         conn.close()
 
